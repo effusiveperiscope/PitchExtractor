@@ -576,8 +576,8 @@ class RMVPE:
             win_length=1024, 
             hop_length=300, 
             n_fft=None,
-            mel_fmin=30, 
-            mel_fmax=8000
+            #mel_fmin=30, 
+            #mel_fmax=8000
         ).to(device)
         if "privateuseone" in str(device):
             import onnxruntime as ort
