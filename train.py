@@ -33,9 +33,9 @@ def get_data_path_list(train_path=None, val_path=None):
     if val_path is None:
         val_path = "Data/val_list.txt"
 
-    with open(train_path, 'r') as f:
+    with open(train_path, 'r', encoding='utf-8') as f:
         train_list = f.readlines()
-    with open(val_path, 'r') as f:
+    with open(val_path, 'r', encoding='utf-8') as f:
         val_list = f.readlines()
 
     # train_list = train_list[-500:]
@@ -65,16 +65,22 @@ def main(config_path):
     train_path = config.get('train_data', None)
     val_path = config.get('val_data', None)
     num_workers = config.get('num_workers', 8)
+    base_dir = config.get('base_dir', "StyleTTS2Omnidata")
+    rmvpe_path = config.get('rmvpe_path', 'rmvpe.pt')
 
     train_list, val_list = get_data_path_list(train_path, val_path)
 
     train_dataloader = build_dataloader(train_list,
+                                        base_dir=base_dir,
+                                        rmvpe_path=rmvpe_path,
                                         batch_size=batch_size,
                                         num_workers=num_workers,
                                         dataset_config=config.get('dataset_params', {}),
                                         device=device)
 
     val_dataloader = build_dataloader(val_list,
+                                      base_dir=base_dir,
+                                      rmvpe_path=rmvpe_path,
                                       batch_size=batch_size,
                                       validation=True,
                                       num_workers=num_workers // 2,

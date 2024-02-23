@@ -19,6 +19,7 @@ import torchaudio
 from torch.utils.data import DataLoader
 
 import pyworld as pw
+from rmvpe import RMVPE
 
 import logging
 logger = logging.getLogger(__name__)
@@ -38,10 +39,13 @@ MEL_PARAMS = {
     "win_length": 1200,
     "hop_length": 300
 }
+BASE_DIR = ""
 
 class MelDataset(torch.utils.data.Dataset):
     def __init__(self,
                  data_list,
+                 base_dir,
+                 rmvpe_path,
                  sr=24000,
                  data_augmentation=False,
                  validation=False,
@@ -49,7 +53,7 @@ class MelDataset(torch.utils.data.Dataset):
                  ):
 
         _data_list = [l[:-1].split('|') for l in data_list]
-        self.data_list = [d[0] for d in _data_list]
+        self.data_list = [os.path.join(base_dir, d[0]) for d in _data_list]
 
         self.sr = sr
         self.to_melspec = torchaudio.transforms.MelSpectrogram(**MEL_PARAMS)
@@ -60,6 +64,8 @@ class MelDataset(torch.utils.data.Dataset):
         self.mean, self.std = -4, 4
         
         self.verbose = verbose
+        self.rmvpe = RMVPE(rmvpe_path, is_half=False,
+            device='cuda' if torch.cuda.is_available() else 'cpu')
         
         # for silence detection
         self.zero_value = -10 # what the zero value is
@@ -71,7 +77,7 @@ class MelDataset(torch.utils.data.Dataset):
     def path_to_mel_and_label(self, path):
         wave_tensor = self._load_tensor(path)
         
-        # use pyworld to get F0
+        # use rmvpe to get F0 TODO
         output_file = path + "_f0.npy"
         # check if the file exists
         if os.path.isfile(output_file): # if exists, load it directly
@@ -80,11 +86,30 @@ class MelDataset(torch.utils.data.Dataset):
             if self.verbose:
                 print('Computing F0 for ' + path + '...')
             x = wave_tensor.numpy().astype("double")
-            frame_period = MEL_PARAMS['hop_length'] * 1000 / self.sr
-            _f0, t = pw.harvest(x, self.sr, frame_period=frame_period)
-            if sum(_f0 != 0) < self.bad_F0: # this happens when the algorithm fails
-                _f0, t = pw.dio(x, self.sr, frame_period=frame_period) # if harvest fails, try dio
-            f0 = pw.stonemask(x, _f0, t, self.sr)
+
+            #frame_period = MEL_PARAMS['hop_length'] * 1000 / self.sr
+            #_f0, t = pw.harvest(x, self.sr, frame_period=frame_period)
+            #if sum(_f0 != 0) < self.bad_F0: # this happens when the algorithm fails
+            #    _f0, t = pw.dio(x, self.sr, frame_period=frame_period) # if harvest fails, try dio
+            #f0 = pw.stonemask(x, _f0, t, self.sr)
+
+            f0 = self.rmvpe.infer_from_audio(x, thred=0.03)
+
+            #import matplotlib.pyplot as plt
+            #import numpy as np
+            #plt.figure(figsize=(10,5))
+            #plt.subplot(1,2,1)
+            #plt.plot(f0)
+            #plt.title('pyworld')
+            #plt.subplot(1,2,2)
+            #plt.plot(f0_r)
+            #plt.title('rmvpe')
+            #plt.tight_layout()
+            #plt.show()
+
+            #import pdb
+            #pdb.set_trace()
+
             # save the f0 info for later use
             np.save(output_file, f0)
         
@@ -170,6 +195,8 @@ class Collater(object):
 
 
 def build_dataloader(path_list,
+                     base_dir,
+                     rmvpe_path,
                      validation=False,
                      batch_size=4,
                      num_workers=1,
@@ -177,7 +204,7 @@ def build_dataloader(path_list,
                      collate_config={},
                      dataset_config={}):
     
-    dataset = MelDataset(path_list, validation=validation, **dataset_config)
+    dataset = MelDataset(path_list, base_dir, rmvpe_path, validation=validation, **dataset_config)
     collate_fn = Collater(**collate_config)
 
     data_loader = DataLoader(dataset,
